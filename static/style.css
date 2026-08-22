@@ -9,6 +9,10 @@ body {
     color: #202124;
 }
 
+body.modal-open {
+    overflow: hidden;
+}
+
 .container {
     max-width: 1600px;
     margin: 0 auto;
@@ -32,6 +36,12 @@ header p {
     color: #73777f;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
 .stats {
     display: flex;
     gap: 12px;
@@ -53,6 +63,20 @@ header p {
 .stats span {
     color: #73777f;
     font-size: 13px;
+}
+
+.menu-button {
+    width: 46px;
+    height: 46px;
+    border: 1px solid #e1e4e8;
+    border-radius: 12px;
+    background: white;
+    font-size: 20px;
+    cursor: pointer;
+}
+
+.menu-button:hover {
+    background: #f0f1f3;
 }
 
 .error {
@@ -208,10 +232,7 @@ tr:hover td {
     color: #d88900;
 }
 
-/* ============================================================
-   VLAN
-   ============================================================ */
-
+/* VLAN */
 .vlan {
     display: inline-block;
     padding: 5px 10px;
@@ -247,63 +268,95 @@ tr:hover td {
     color: #1d4ed8;
 }
 
-/* ============================================================
-   FIXED IP MANAGER
-   ============================================================ */
-
-.fixed-manager {
-    background: white;
-    border: 1px solid #e1e4e8;
-    border-radius: 12px;
-    padding: 18px;
-    margin-bottom: 18px;
+/* Fixed IP modal */
+.modal-backdrop {
+    position: fixed;
+    inset: 0;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(20, 22, 26, .45);
+    z-index: 1000;
 }
 
-.fixed-manager-header {
+.modal-backdrop.open {
     display: flex;
-    justify-content: space-between;
+}
+
+.modal {
+    width: min(620px, 100%);
+    max-height: min(720px, 90vh);
+    display: flex;
+    flex-direction: column;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, .22);
+    overflow: hidden;
+}
+
+.modal-header {
+    display: flex;
     align-items: flex-start;
-    gap: 16px;
-    margin-bottom: 14px;
+    justify-content: space-between;
+    gap: 20px;
+    padding: 22px 24px 16px;
+    border-bottom: 1px solid #edf0f2;
 }
 
-.fixed-manager h2 {
+.modal-header h2 {
     margin: 0;
-    font-size: 18px;
+    font-size: 20px;
 }
 
-.fixed-manager p {
+.modal-header p {
     margin: 5px 0 0;
     color: #73777f;
     font-size: 13px;
 }
 
-.fixed-manager textarea {
-    display: block;
+.modal-close {
+    width: 34px;
+    height: 34px;
+    border: 0;
+    border-radius: 8px;
+    background: transparent;
+    color: #73777f;
+    font-size: 25px;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.modal-close:hover {
+    background: #f0f1f3;
+    color: #202124;
+}
+
+.modal textarea {
     width: 100%;
-    min-height: 150px;
+    min-height: 360px;
     resize: vertical;
-    border: 1px solid #d8dce2;
-    border-radius: 9px;
-    padding: 12px 14px;
+    border: 0;
+    outline: 0;
+    padding: 20px 24px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-size: 13px;
-    line-height: 1.6;
-    outline: none;
+    line-height: 1.7;
     background: #fafbfc;
 }
 
-.fixed-manager textarea:focus {
-    border-color: #777;
-    background: white;
-}
-
-.fixed-manager-actions {
+.modal-footer {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-top: 12px;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 24px;
+    border-top: 1px solid #edf0f2;
+}
+
+.modal-footer > div {
+    display: flex;
+    gap: 8px;
 }
 
 .button {
@@ -333,21 +386,6 @@ tr:hover td {
     background: #dde0e5;
 }
 
-.github-status {
-    display: inline-flex;
-    padding: 5px 9px;
-    border-radius: 7px;
-    background: #f1f1f1;
-    color: #777;
-    font-size: 11px;
-    font-weight: 600;
-}
-
-.github-status.configured {
-    background: #dcfce7;
-    color: #15803d;
-}
-
 .save-status {
     font-size: 12px;
 }
@@ -360,17 +398,8 @@ tr:hover td {
     color: #15803d;
 }
 
-.save-status.warning {
-    color: #a16207;
-}
-
 .save-status.error-status {
     color: #b91c1c;
-}
-
-.save-status a {
-    color: inherit;
-    text-decoration: underline;
 }
 
 footer {
@@ -398,6 +427,10 @@ code {
         flex-direction: column;
     }
 
+    .header-actions {
+        width: 100%;
+    }
+
     .stats {
         width: 100%;
     }
@@ -406,7 +439,20 @@ code {
         flex: 1;
     }
 
-    .fixed-manager-header {
+    .menu-button {
+        flex: 0 0 46px;
+    }
+
+    .modal-backdrop {
+        padding: 12px;
+    }
+
+    .modal-footer {
+        align-items: stretch;
         flex-direction: column;
+    }
+
+    .modal-footer > div {
+        justify-content: flex-end;
     }
 }
