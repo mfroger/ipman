@@ -100,21 +100,34 @@ def ip_sort(row):
 
 def inventory():
     result, meta = [], metadata()
+    seen_ips = set()
+
     for site in api_get("/v1/sites").get("data", []):
         sid, sname = site["id"], site.get("name", site["id"])
         devices = get_all(f"/v1/sites/{sid}/devices")
         clients = get_all(f"/v1/sites/{sid}/clients")
         device_macs = {d.get("macAddress", "").lower() for d in devices}
+
         for d in devices:
             ip = d.get("ipAddress")
             if not ip: continue
+            seen_ips.add(ip)
             m = meta.get(ip, {})
             result.append({"ip":ip,"type":"UNIFI","name":d.get("name", ""),"mac":d.get("macAddress", ""),"model":m.get("model_override") or d.get("model", ""),"state":d.get("state", ""),"site":sname,"vlan":vlan(ip),"fixed":m.get("fixed",False),"description":m.get("description","")})
+
         for c in clients:
             ip = c.get("ipAddress")
             if not ip or c.get("macAddress", "").lower() in device_macs: continue
+            seen_ips.add(ip)
             m = meta.get(ip, {})
             result.append({"ip":ip,"type":"CLIENT","name":c.get("name", ""),"mac":c.get("macAddress", ""),"model":m.get("model_override", ""),"state":"ONLINE","site":sname,"vlan":vlan(ip),"fixed":m.get("fixed",False),"description":m.get("description","")})
+
+    # IP ajoutées manuellement dans IPMan mais absentes de l'inventaire UniFi.
+    for ip, m in meta.items():
+        if ip in seen_ips:
+            continue
+        result.append({"ip":ip,"type":"IPMAN","name":"","mac":"","model":m.get("model_override", ""),"state":"OFFLINE","site":"","vlan":vlan(ip),"fixed":m.get("fixed",False),"description":m.get("description","")})
+
     return sorted(result, key=ip_sort)
 
 
