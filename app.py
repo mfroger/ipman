@@ -55,9 +55,9 @@ def load_old_ips():
             if not line or line.startswith("#"):
                 continue
             try:
-                ip = ipaddress.ip_address(line)
-                if ip.version == 4:
-                    result.append(str(ip))
+                address = ipaddress.ip_address(line)
+                if address.version == 4:
+                    result.append(str(address))
             except ValueError:
                 pass
     return result
@@ -78,13 +78,11 @@ def init_db():
             c.execute("ALTER TABLE ip_metadata ADD COLUMN mac TEXT NOT NULL DEFAULT ''")
         if "type" not in columns:
             c.execute("ALTER TABLE ip_metadata ADD COLUMN type TEXT NOT NULL DEFAULT ''")
-
         c.execute("""CREATE TABLE IF NOT EXISTS inventory_cache (
             id INTEGER PRIMARY KEY CHECK (id = 1),
             payload TEXT NOT NULL DEFAULT '[]',
             synced_at TEXT NOT NULL DEFAULT ''
         )""")
-
         if c.execute("SELECT COUNT(*) FROM ip_metadata").fetchone()[0] == 0:
             for ip in load_old_ips():
                 c.execute("INSERT OR IGNORE INTO ip_metadata(ip,fixed) VALUES(?,1)", (ip,))
@@ -94,17 +92,9 @@ def init_db():
 def metadata():
     with db() as c:
         rows = c.execute("SELECT * FROM ip_metadata").fetchall()
-    by_ip = {}
-    by_mac = {}
+    by_ip, by_mac = {}, {}
     for r in rows:
-        item = {
-            "ip": r["ip"],
-            "fixed": bool(r["fixed"]),
-            "description": r["description"],
-            "model_override": r["model"],
-            "mac": (r["mac"] or "").lower(),
-            "type_override": (r["type"] or "").upper(),
-        }
+        item = {"ip": r["ip"], "fixed": bool(r["fixed"]), "description": r["description"], "model_override": r["model"], "mac": (r["mac"] or "").lower(), "type_override": (r["type"] or "").upper()}
         by_ip[item["ip"]] = item
         if item["mac"]:
             by_mac[item["mac"]] = item
@@ -114,13 +104,7 @@ def metadata():
 def api_get(path, params=None):
     if not API_KEY:
         raise RuntimeError("UNIFI_API_KEY n'est pas défini")
-    r = requests.get(
-        f"{UNIFI_URL}/proxy/network/integration{path}",
-        headers={"X-API-Key": API_KEY, "Accept": "application/json"},
-        params=params,
-        verify=False,
-        timeout=15,
-    )
+    r = requests.get(f"{UNIFI_URL}/proxy/network/integration{path}", headers={"X-API-Key": API_KEY, "Accept": "application/json"}, params=params, verify=False, timeout=15)
     r.raise_for_status()
     return r.json()
 
@@ -132,9 +116,8 @@ def get_all(endpoint):
         items = data.get("data", [])
         result.extend(items)
         if not items or len(result) >= data.get("totalCount", len(result)):
-            break
+            return result
         offset += limit
-    return result
 
 
 def vlan(ip):
@@ -156,32 +139,38 @@ def apply_metadata(rows):
     by_ip, by_mac = metadata()
     seen_ips = set()
     result = []
-
-    for row in rows:
+    for original in rows:
+        row = dict(original)
         ip = row.get("ip")
         mac = (row.get("mac") or "").lower()
         if not ip:
             continue
-
         m = by_mac.get(mac) if mac else None
         if m is None:
             m = by_ip.get(ip)
-
         if m:
             row["fixed"] = m["fixed"]
             row["description"] = m["description"]
             row["model"] = m["model_override"] or row.get("model", "")
             row["type"] = m["type_override"] or row.get("type", "")
+            if mac and m["mac"] != mac:
+                with db() as c:
+                    c.execute("UPDATE ip_metadata SET mac=? WHERE ip=? AND (mac='' OR mac IS NULL)", (mac, m["ip"]))
+                    c.commit()
             if mac and m["mac"] == mac and m["ip"] != ip:
                 with db() as c:
-                    existing = c.execute("SELECT ip FROM ip_metadata WHERE ip=?", (ip,)).fetchone()
-                    if not existing:
+                    if not c.execute("SELECT ip FROM ip_metadata WHERE ip=?", (ip,)).fetchone():
                         c.execute("UPDATE ip_metadata SET ip=? WHERE ip=?", (ip, m["ip"]))
                         c.commit()
         else:
             row["fixed"] = False
             row["description"] = ""
-
+        row.setdefault("vlan", vlan(ip))
+        row.setdefault("vlan_name", "")
+        row.setdefault("site", "")
+        row.setdefault("state", "")
+        row.setdefault("id", "")
+        row.setdefault("uplink_id", "")
         seen_ips.add(ip)
         result.append(row)
 
@@ -189,19 +178,7 @@ def apply_metadata(rows):
     for ip, m in by_ip.items():
         if ip in seen_ips:
             continue
-        result.append({
-            "ip": ip,
-            "type": m["type_override"] or "IPMAN",
-            "name": "",
-            "mac": m["mac"],
-            "model": m["model_override"],
-            "state": "OFFLINE",
-            "site": "",
-            "vlan": vlan(ip),
-            "fixed": m["fixed"],
-            "description": m["description"],
-        })
-
+        result.append({"ip": ip, "type": m["type_override"] or "IPMAN", "name": "", "mac": m["mac"], "model": m["model_override"], "state": "OFFLINE", "site": "", "vlan": vlan(ip), "vlan_name": "", "fixed": m["fixed"], "description": m["description"], "id": "", "uplink_id": ""})
     return sorted(result, key=ip_sort)
 
 
@@ -211,46 +188,30 @@ def fetch_inventory_from_unifi():
         sid, sname = site["id"], site.get("name", site["id"])
         devices = get_all(f"/v1/sites/{sid}/devices")
         clients = get_all(f"/v1/sites/{sid}/clients")
+        try:
+            networks = get_all(f"/v1/sites/{sid}/networks")
+        except Exception:
+            networks = []
+        network_names = {n.get("vlanId"): n.get("name", "") for n in networks if n.get("vlanId") is not None}
         device_macs = {d.get("macAddress", "").lower() for d in devices}
-
         for d in devices:
             ip = d.get("ipAddress")
             if not ip:
                 continue
-            result.append({
-                "ip": ip,
-                "type": "UNIFI",
-                "name": d.get("name", ""),
-                "mac": d.get("macAddress", ""),
-                "model": d.get("model", ""),
-                "state": d.get("state", ""),
-                "site": sname,
-                "vlan": vlan(ip),
-            })
-
+            v = vlan(ip)
+            result.append({"ip": ip, "type": "UNIFI", "name": d.get("name", ""), "mac": d.get("macAddress", ""), "model": d.get("model", ""), "state": d.get("state", ""), "site": sname, "vlan": v, "vlan_name": network_names.get(v, ""), "id": d.get("id", ""), "uplink_id": d.get("uplinkDeviceId", "")})
         for client in clients:
             ip = client.get("ipAddress")
             if not ip or client.get("macAddress", "").lower() in device_macs:
                 continue
-            result.append({
-                "ip": ip,
-                "type": "CLIENT",
-                "name": client.get("name", ""),
-                "mac": client.get("macAddress", ""),
-                "model": "",
-                "state": "ONLINE",
-                "site": sname,
-                "vlan": vlan(ip),
-            })
+            v = vlan(ip)
+            result.append({"ip": ip, "type": "CLIENT", "name": client.get("name", ""), "mac": client.get("macAddress", ""), "model": "", "state": "ONLINE", "site": sname, "vlan": v, "vlan_name": network_names.get(v, ""), "id": client.get("id", ""), "uplink_id": client.get("uplinkDeviceId", "")})
     return result
 
 
 def save_cache(rows):
     with db() as c:
-        c.execute(
-            "INSERT INTO inventory_cache(id,payload,synced_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,synced_at=excluded.synced_at",
-            (json.dumps(rows, ensure_ascii=False), datetime.now(timezone.utc).isoformat()),
-        )
+        c.execute("INSERT INTO inventory_cache(id,payload,synced_at) VALUES(1,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,synced_at=excluded.synced_at", (json.dumps(rows, ensure_ascii=False), datetime.now(timezone.utc).isoformat()))
         c.commit()
 
 
@@ -267,9 +228,9 @@ def cached_inventory():
 
 def sync_inventory():
     rows = fetch_inventory_from_unifi()
-    apply_metadata(rows)
+    rows = apply_metadata(rows)
     save_cache(rows)
-    return apply_metadata(rows)
+    return rows
 
 
 def inventory():
@@ -294,21 +255,22 @@ def index(request: Request):
     except Exception as e:
         error = str(e)
     fixed = [r for r in rows if r["fixed"]]
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={"rows": rows, "fixed_rows": fixed, "fixed_count": len(fixed), "error": error},
-    )
+    return templates.TemplateResponse(request=request, name="index.html", context={"rows": rows, "fixed_rows": fixed, "fixed_count": len(fixed), "error": error})
 
 
 @app.post("/api/sync")
 def manual_sync():
     try:
         rows = sync_inventory()
-        fixed = sum(1 for r in rows if r["fixed"])
-        return {"success": True, "count": len(rows), "fixed": fixed}
+        return {"success": True, "count": len(rows), "fixed": sum(1 for r in rows if r["fixed"])}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+
+@app.get("/api/inventory")
+def inventory_api():
+    rows = inventory()
+    return {"rows": rows}
 
 
 @app.post("/api/ip")
@@ -318,17 +280,13 @@ def update_ip(payload: IPUpdate):
         if address.version != 4:
             raise ValueError("Seules les IPv4 sont supportées")
         ip = str(address)
-        allowed_types = {"UNIFI", "CLIENT", "IPMAN"}
         ip_type = payload.type.strip().upper() or "IPMAN"
-        if ip_type not in allowed_types:
+        if ip_type not in {"UNIFI", "CLIENT", "IPMAN"}:
             raise ValueError("Type invalide")
         with db() as c:
             old = c.execute("SELECT mac FROM ip_metadata WHERE ip=?", (ip,)).fetchone()
             mac = old["mac"] if old else ""
-            c.execute(
-                "INSERT INTO ip_metadata(ip,fixed,description,model,mac,type) VALUES(?,?,?,?,?,?) ON CONFLICT(ip) DO UPDATE SET fixed=excluded.fixed,description=excluded.description,model=excluded.model,type=excluded.type",
-                (ip, int(payload.fixed), payload.description.strip(), payload.model.strip(), mac, ip_type),
-            )
+            c.execute("INSERT INTO ip_metadata(ip,fixed,description,model,mac,type) VALUES(?,?,?,?,?,?) ON CONFLICT(ip) DO UPDATE SET fixed=excluded.fixed,description=excluded.description,model=excluded.model,type=excluded.type", (ip, int(payload.fixed), payload.description.strip(), payload.model.strip(), mac, ip_type))
             c.commit()
         return {"success": True, "ip": ip}
     except ValueError as e:
@@ -343,7 +301,7 @@ def delete_ip(payload: IPDelete):
             raise ValueError("Seules les IPv4 sont supportées")
         ip = str(address)
         with db() as c:
-            c.execute("DELETE FROM ip_metadata WHERE ip = ?", (ip,))
+            c.execute("DELETE FROM ip_metadata WHERE ip=?", (ip,))
             c.commit()
         return {"success": True, "ip": ip}
     except ValueError as e:
