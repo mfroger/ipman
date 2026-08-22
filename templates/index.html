@@ -4,15 +4,9 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>IPMan</title>
-
-    <link
-        rel="stylesheet"
-        href="{{ url_for('static', path='style.css') }}"
-    >
+    <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
-
 <body>
-
 <div class="container">
 
     <header>
@@ -21,15 +15,21 @@
             <p>Inventaire IP UniFi</p>
         </div>
 
-        <div class="stats">
-            <div>
-                <strong>{{ rows|length }}</strong>
-                <span>Toutes les IP</span>
+        <div class="header-actions">
+            <div class="stats">
+                <div>
+                    <strong>{{ rows|length }}</strong>
+                    <span>Toutes les IP</span>
+                </div>
+                <div>
+                    <strong>{{ fixed_rows|length }}</strong>
+                    <span>IP Fixed</span>
+                </div>
             </div>
-            <div>
-                <strong>{{ fixed_rows|length }}</strong>
-                <span>IP Fixed</span>
-            </div>
+
+            <button class="menu-button" onclick="openFixedMenu()" title="Modifier ips.txt">
+                ⚙️
+            </button>
         </div>
     </header>
 
@@ -44,14 +44,12 @@
         <button class="tab active" onclick="showTab('all', this)">
             Toutes les IP <span>{{ rows|length }}</span>
         </button>
-
         <button class="tab" onclick="showTab('fixed', this)">
             IP Fixed <span>{{ fixed_rows|length }}</span>
         </button>
     </nav>
 
     <section id="all" class="tab-content active">
-
         <div class="toolbar">
             <input
                 id="searchAll"
@@ -75,38 +73,22 @@
                         <th>SITE</th>
                     </tr>
                 </thead>
-
                 <tbody>
                 {% for row in rows %}
                     <tr class="{% if row.fixed %}fixed-row{% endif %}">
                         <td class="ip">{{ row.ip }}</td>
-
                         <td>
                             {% if row.vlan is not none %}
-                                <span class="vlan vlan-{{ row.vlan }}">
-                                    VLAN {{ row.vlan }}
-                                </span>
+                                <span class="vlan vlan-{{ row.vlan }}">VLAN {{ row.vlan }}</span>
                             {% else %}
                                 —
                             {% endif %}
                         </td>
-
-                        <td>
-                            <span class="badge {{ row.type|lower }}">
-                                {{ row.type }}
-                            </span>
-                        </td>
-
+                        <td><span class="badge {{ row.type|lower }}">{{ row.type }}</span></td>
                         <td>{{ row.name }}</td>
                         <td class="mono">{{ row.mac }}</td>
                         <td>{{ row.model }}</td>
-
-                        <td>
-                            <span class="state {{ row.state|lower }}">
-                                {{ row.state }}
-                            </span>
-                        </td>
-
+                        <td><span class="state {{ row.state|lower }}">{{ row.state }}</span></td>
                         <td>{{ row.site }}</td>
                     </tr>
                 {% endfor %}
@@ -116,31 +98,6 @@
     </section>
 
     <section id="fixed" class="tab-content">
-
-        <div class="fixed-manager">
-            <div class="fixed-manager-header">
-                <div>
-                    <h2>IP fixes</h2>
-                    <p>Une IP par ligne. Les modifications sont enregistrées dans <code>ips.txt</code>.</p>
-                </div>
-            </div>
-
-            <textarea
-                id="fixedIpsInput"
-                spellcheck="false"
-                placeholder="192.168.1.10&#10;192.168.1.20&#10;192.168.40.50"
-            >{% for ip in fixed_ips %}{{ ip }}
-{% endfor %}</textarea>
-
-            <div class="fixed-manager-actions">
-                <button class="button primary" onclick="saveFixedIPs()">
-                    Enregistrer
-                </button>
-
-                <span id="saveStatus" class="save-status"></span>
-            </div>
-        </div>
-
         <div class="toolbar">
             <input
                 id="searchFixed"
@@ -164,38 +121,22 @@
                         <th>SITE</th>
                     </tr>
                 </thead>
-
                 <tbody>
                 {% for row in fixed_rows %}
                     <tr>
                         <td class="ip">{{ row.ip }}</td>
-
                         <td>
                             {% if row.vlan is not none %}
-                                <span class="vlan vlan-{{ row.vlan }}">
-                                    VLAN {{ row.vlan }}
-                                </span>
+                                <span class="vlan vlan-{{ row.vlan }}">VLAN {{ row.vlan }}</span>
                             {% else %}
                                 —
                             {% endif %}
                         </td>
-
-                        <td>
-                            <span class="badge {{ row.type|lower }}">
-                                {{ row.type }}
-                            </span>
-                        </td>
-
+                        <td><span class="badge {{ row.type|lower }}">{{ row.type }}</span></td>
                         <td>{{ row.name }}</td>
                         <td class="mono">{{ row.mac }}</td>
                         <td>{{ row.model }}</td>
-
-                        <td>
-                            <span class="state {{ row.state|lower }}">
-                                {{ row.state }}
-                            </span>
-                        </td>
-
+                        <td><span class="state {{ row.state|lower }}">{{ row.state }}</span></td>
                         <td>{{ row.site }}</td>
                     </tr>
                 {% endfor %}
@@ -205,15 +146,39 @@
     </section>
 
     <footer>
-        <span>
-            Fixed IPs chargées depuis <code>ips.txt</code>
-        </span>
-
-        <span>
-            {{ fixed_ips|length }} IP configurées
-        </span>
+        <span>Fixed IPs chargées depuis <code>ips.txt</code></span>
+        <span>{{ fixed_ips|length }} IP configurées</span>
     </footer>
+</div>
 
+<!-- =====================================================
+     MENU / MODAL EDITION IPS.TXT
+====================================================== -->
+<div id="fixedMenu" class="modal-backdrop" onclick="closeFixedMenu(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-header">
+            <div>
+                <h2>IP Fixed</h2>
+                <p>Modifier directement le fichier <code>ips.txt</code>.</p>
+            </div>
+            <button class="modal-close" onclick="closeFixedMenu()">×</button>
+        </div>
+
+        <textarea
+            id="fixedIpsInput"
+            spellcheck="false"
+            placeholder="192.168.1.10&#10;192.168.1.20&#10;192.168.40.50"
+        >{% for ip in fixed_ips %}{{ ip }}
+{% endfor %}</textarea>
+
+        <div class="modal-footer">
+            <span id="saveStatus" class="save-status"></span>
+            <div>
+                <button class="button secondary" onclick="closeFixedMenu()">Annuler</button>
+                <button class="button primary" onclick="saveFixedIPs()">Enregistrer</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script>
@@ -236,6 +201,21 @@ function filterTable(tableId, value) {
     document.querySelectorAll('#' + tableId + ' tbody tr').forEach(function(row) {
         row.style.display = row.innerText.toLowerCase().includes(value) ? '' : 'none';
     });
+}
+
+function openFixedMenu() {
+    document.getElementById('fixedMenu').classList.add('open');
+    document.body.classList.add('modal-open');
+    document.getElementById('fixedIpsInput').focus();
+}
+
+function closeFixedMenu(event) {
+    if (event && event.target !== event.currentTarget) {
+        return;
+    }
+
+    document.getElementById('fixedMenu').classList.remove('open');
+    document.body.classList.remove('modal-open');
 }
 
 async function saveFixedIPs() {
@@ -266,7 +246,6 @@ async function saveFixedIPs() {
         }
 
         textarea.value = data.ips.join('\n');
-
         status.className = 'save-status success';
         status.textContent = '✓ ips.txt enregistré localement';
 
@@ -279,7 +258,12 @@ async function saveFixedIPs() {
         status.textContent = '✕ ' + error.message;
     }
 }
-</script>
 
+document.addEventListener('keydown', function(event) {
+    if (event.key === 'Escape') {
+        closeFixedMenu();
+    }
+});
+</script>
 </body>
 </html>
