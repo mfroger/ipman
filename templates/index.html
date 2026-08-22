@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IPMan</title><link rel="stylesheet" href="{{ url_for('static', path='style.css') }}"></head><body>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>IPMan</title><link rel="icon" type="image/svg+xml" href="{{ url_for('static', path='favicon.svg') }}"><link rel="stylesheet" href="{{ url_for('static', path='style.css') }}"></head><body>
 <div class="container"><header><div><h1>IPMan</h1><p>Inventaire IP UniFi</p></div><div class="header-actions"><div class="stats"><div><strong>{{ rows|length }}</strong><span>Toutes les IP</span></div><div><strong>{{ fixed_rows|length }}</strong><span>IP Fixed</span></div></div></div></header>
 {% if error %}<div class="error"><strong>Erreur UniFi :</strong> {{ error }}</div>{% endif %}
 <nav class="tabs"><button type="button" class="tab active" onclick="showTab('fixed',this)">IP Fixed <span>{{ fixed_rows|length }}</span></button><button type="button" class="tab" onclick="showTab('all',this)">Toutes les IP <span>{{ rows|length }}</span></button></nav>
