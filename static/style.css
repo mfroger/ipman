@@ -10,7 +10,7 @@ body {
 }
 
 .container {
-    max-width: 1500px;
+    max-width: 1600px;
     margin: 0 auto;
     padding: 32px;
 }
@@ -208,6 +208,171 @@ tr:hover td {
     color: #d88900;
 }
 
+/* ============================================================
+   VLAN
+   ============================================================ */
+
+.vlan {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.vlan-1 {
+    background-color: #e5e7eb;
+    color: #374151;
+}
+
+.vlan-20 {
+    background-color: #fee2e2;
+    color: #b91c1c;
+}
+
+.vlan-40 {
+    background-color: #dcfce7;
+    color: #15803d;
+}
+
+.vlan-50 {
+    background-color: #f3e8ff;
+    color: #7e22ce;
+}
+
+.vlan-70 {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+}
+
+/* ============================================================
+   FIXED IP MANAGER
+   ============================================================ */
+
+.fixed-manager {
+    background: white;
+    border: 1px solid #e1e4e8;
+    border-radius: 12px;
+    padding: 18px;
+    margin-bottom: 18px;
+}
+
+.fixed-manager-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+.fixed-manager h2 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.fixed-manager p {
+    margin: 5px 0 0;
+    color: #73777f;
+    font-size: 13px;
+}
+
+.fixed-manager textarea {
+    display: block;
+    width: 100%;
+    min-height: 150px;
+    resize: vertical;
+    border: 1px solid #d8dce2;
+    border-radius: 9px;
+    padding: 12px 14px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    outline: none;
+    background: #fafbfc;
+}
+
+.fixed-manager textarea:focus {
+    border-color: #777;
+    background: white;
+}
+
+.fixed-manager-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+}
+
+.button {
+    border: 0;
+    border-radius: 8px;
+    padding: 10px 15px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.button.primary {
+    background: #202124;
+    color: white;
+}
+
+.button.primary:hover {
+    background: #000;
+}
+
+.button.secondary {
+    background: #e9ebef;
+    color: #303238;
+}
+
+.button.secondary:hover {
+    background: #dde0e5;
+}
+
+.github-status {
+    display: inline-flex;
+    padding: 5px 9px;
+    border-radius: 7px;
+    background: #f1f1f1;
+    color: #777;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.github-status.configured {
+    background: #dcfce7;
+    color: #15803d;
+}
+
+.save-status {
+    font-size: 12px;
+}
+
+.save-status.loading {
+    color: #73777f;
+}
+
+.save-status.success {
+    color: #15803d;
+}
+
+.save-status.warning {
+    color: #a16207;
+}
+
+.save-status.error-status {
+    color: #b91c1c;
+}
+
+.save-status a {
+    color: inherit;
+    text-decoration: underline;
+}
+
 footer {
     display: flex;
     justify-content: space-between;
@@ -240,53 +405,8 @@ code {
     .stats div {
         flex: 1;
     }
-}
 
-/* VLAN */
-
-.vlan {
-    display: inline-block;
-    padding: 5px 10px;
-    border-radius: 7px;
-    font-size: 12px;
-    font-weight: 700;
-
-    /* couleur par défaut */
-    background-color: #fef3c7;
-    color: #92400e;
-}
-
-
-/* VLAN 1 - MGMT */
-.vlan-1 {
-    background-color: #e5e7eb;
-    color: #374151;
-}
-
-
-/* VLAN 20 - CCTV */
-.vlan-20 {
-    background-color: #fee2e2;
-    color: #b91c1c;
-}
-
-
-/* VLAN 40 - IOT */
-.vlan-40 {
-    background-color: #dcfce7;
-    color: #15803d;
-}
-
-
-/* VLAN 50 - CVPN */
-.vlan-50 {
-    background-color: #f3e8ff;
-    color: #7e22ce;
-}
-
-
-/* VLAN 70 - HOMELAB */
-.vlan-70 {
-    background-color: #dbeafe;
-    color: #1d4ed8;
+    .fixed-manager-header {
+        flex-direction: column;
+    }
 }
