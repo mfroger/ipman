@@ -1,275 +1,158 @@
 import ipaddress
 import os
+import sqlite3
 from typing import Any
 
 import requests
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 load_dotenv()
-
 UNIFI_URL = os.getenv("UNIFI_URL", "https://192.168.1.1").rstrip("/")
 API_KEY = os.getenv("UNIFI_API_KEY")
-
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+DB_FILE = os.path.join(DATA_DIR, "ipman.db")
 IPS_FILE = os.path.join(BASE_DIR, "ips.txt")
 
 app = FastAPI(title="IPMan")
-
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
-app.mount(
-    "/static",
-    StaticFiles(directory=os.path.join(BASE_DIR, "static")),
-    name="static",
-)
-
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
 requests.packages.urllib3.disable_warnings()
 
-
-class FixedIPsPayload(BaseModel):
-    ips: list[str]
-
-
-# ============================================================
-# UNIFI API
-# ============================================================
-
-def api_get(path: str, params: dict | None = None) -> dict:
-    if not API_KEY:
-        raise RuntimeError("UNIFI_API_KEY n'est pas défini")
-
-    response = requests.get(
-        f"{UNIFI_URL}/proxy/network/integration{path}",
-        headers={
-            "X-API-Key": API_KEY,
-            "Accept": "application/json",
-        },
-        params=params,
-        verify=False,
-        timeout=15,
-    )
-    response.raise_for_status()
-    return response.json()
+class IPUpdate(BaseModel):
+    ip: str
+    fixed: bool = False
+    description: str = ""
+    model: str = ""
 
 
-def get_all(endpoint: str) -> list[dict[str, Any]]:
-    results = []
-    offset = 0
-    limit = 200
+def db():
+    os.makedirs(DATA_DIR, exist_ok=True)
+    c = sqlite3.connect(DB_FILE)
+    c.row_factory = sqlite3.Row
+    return c
 
+
+def load_old_ips():
+    if not os.path.exists(IPS_FILE): return []
+    result = []
+    with open(IPS_FILE, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith("#"): continue
+            try:
+                ip = ipaddress.ip_address(line)
+                if ip.version == 4: result.append(str(ip))
+            except ValueError: pass
+    return result
+
+
+def init_db():
+    with db() as c:
+        c.execute("CREATE TABLE IF NOT EXISTS ip_metadata (ip TEXT PRIMARY KEY, fixed INTEGER NOT NULL DEFAULT 0, description TEXT NOT NULL DEFAULT '', model TEXT NOT NULL DEFAULT '')")
+        if c.execute("SELECT COUNT(*) FROM ip_metadata").fetchone()[0] == 0:
+            for ip in load_old_ips(): c.execute("INSERT OR IGNORE INTO ip_metadata(ip,fixed) VALUES(?,1)", (ip,))
+        c.commit()
+
+
+def metadata():
+    with db() as c:
+        return {r["ip"]: {"fixed": bool(r["fixed"]), "description": r["description"], "model_override": r["model"]} for r in c.execute("SELECT * FROM ip_metadata")}
+
+
+def api_get(path, params=None):
+    if not API_KEY: raise RuntimeError("UNIFI_API_KEY n'est pas défini")
+    r = requests.get(f"{UNIFI_URL}/proxy/network/integration{path}", headers={"X-API-Key": API_KEY, "Accept": "application/json"}, params=params, verify=False, timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_all(endpoint):
+    result, offset, limit = [], 0, 200
     while True:
         data = api_get(endpoint, {"offset": offset, "limit": limit})
         items = data.get("data", [])
-        results.extend(items)
-
-        total = data.get("totalCount", len(results))
-        if not items or len(results) >= total:
-            break
-
+        result.extend(items)
+        if not items or len(result) >= data.get("totalCount", len(result)): break
         offset += limit
-
-    return results
-
-
-def get_sites():
-    return api_get("/v1/sites").get("data", [])
+    return result
 
 
-# ============================================================
-# FIXED IPS
-# ============================================================
-
-def normalize_ips(ips: list[str]) -> list[str]:
-    """Validate IPv4 addresses, remove duplicates and sort them."""
-    normalized = set()
-
-    for raw_ip in ips:
-        ip = raw_ip.strip()
-        if not ip:
-            continue
-
-        try:
-            address = ipaddress.ip_address(ip)
-        except ValueError:
-            raise ValueError(f"IP invalide : {ip}")
-
-        if address.version != 4:
-            raise ValueError(f"Seules les IPv4 sont supportées : {ip}")
-
-        normalized.add(str(address))
-
-    return sorted(
-        normalized,
-        key=lambda value: tuple(int(part) for part in value.split(".")),
-    )
-
-
-def load_fixed_ips() -> set[str]:
-    if not os.path.exists(IPS_FILE):
-        return set()
-
-    ips = set()
-
-    with open(IPS_FILE, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            ips.add(line)
-
-    return ips
-
-
-def write_fixed_ips(ips: list[str]) -> None:
-    content = "# IP fixes\n# Une IP par ligne\n# Les lignes commençant par # sont ignorées\n\n"
-    content += "\n".join(ips)
-    content += "\n"
-
-    with open(IPS_FILE, "w", encoding="utf-8") as f:
-        f.write(content)
-
-
-# ============================================================
-# VLAN
-# ============================================================
-
-def get_vlan(ip: str) -> int | None:
+def vlan(ip):
     try:
-        parts = ip.split(".")
+        p = ip.split(".")
+        return int(p[2]) if len(p) == 4 and p[:2] == ["192", "168"] else None
+    except ValueError: return None
 
-        if len(parts) != 4:
-            return None
-
-        if parts[0] != "192" or parts[1] != "168":
-            return None
-
-        return int(parts[2])
-
-    except (ValueError, IndexError):
-        return None
-
-
-# ============================================================
-# INVENTORY
-# ============================================================
 
 def ip_sort(row):
-    try:
-        return tuple(int(x) for x in row.get("ip", "").split("."))
-    except Exception:
-        return (999, 999, 999, 999)
+    try: return tuple(map(int, row["ip"].split(".")))
+    except Exception: return (999,999,999,999)
 
 
-def get_inventory():
-    rows = []
-
-    for site in get_sites():
-        site_id = site["id"]
-        site_name = site.get("name", site_id)
-
-        devices = get_all(f"/v1/sites/{site_id}/devices")
-        clients = get_all(f"/v1/sites/{site_id}/clients")
-
-        device_macs = {
-            d.get("macAddress", "").lower()
-            for d in devices
-            if d.get("macAddress")
-        }
-
-        for device in devices:
-            ip = device.get("ipAddress")
-            if not ip:
-                continue
-
-            rows.append({
-                "ip": ip,
-                "type": "UNIFI",
-                "name": device.get("name", ""),
-                "mac": device.get("macAddress", ""),
-                "model": device.get("model", ""),
-                "state": device.get("state", ""),
-                "site": site_name,
-                "vlan": get_vlan(ip),
-            })
-
-        for client in clients:
-            ip = client.get("ipAddress")
-            if not ip:
-                continue
-
-            mac = client.get("macAddress", "").lower()
-            if mac in device_macs:
-                continue
-
-            rows.append({
-                "ip": ip,
-                "type": "CLIENT",
-                "name": client.get("name", ""),
-                "mac": client.get("macAddress", ""),
-                "model": "",
-                "state": "ONLINE",
-                "site": site_name,
-                "vlan": get_vlan(ip),
-            })
-
-    rows.sort(key=ip_sort)
-    return rows
+def inventory():
+    result, meta = [], metadata()
+    for site in api_get("/v1/sites").get("data", []):
+        sid, sname = site["id"], site.get("name", site["id"])
+        devices = get_all(f"/v1/sites/{sid}/devices")
+        clients = get_all(f"/v1/sites/{sid}/clients")
+        device_macs = {d.get("macAddress", "").lower() for d in devices}
+        for d in devices:
+            ip = d.get("ipAddress")
+            if not ip: continue
+            m = meta.get(ip, {})
+            result.append({"ip":ip,"type":"UNIFI","name":d.get("name", ""),"mac":d.get("macAddress", ""),"model":m.get("model_override") or d.get("model", ""),"state":d.get("state", ""),"site":sname,"vlan":vlan(ip),"fixed":m.get("fixed",False),"description":m.get("description","")})
+        for c in clients:
+            ip = c.get("ipAddress")
+            if not ip or c.get("macAddress", "").lower() in device_macs: continue
+            m = meta.get(ip, {})
+            result.append({"ip":ip,"type":"CLIENT","name":c.get("name", ""),"mac":c.get("macAddress", ""),"model":m.get("model_override", ""),"state":"ONLINE","site":sname,"vlan":vlan(ip),"fixed":m.get("fixed",False),"description":m.get("description","")})
+    return sorted(result, key=ip_sort)
 
 
-# ============================================================
-# ROUTES
-# ============================================================
+@app.on_event("startup")
+def startup(): init_db()
+
 
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
-    error = None
-    rows = []
+    error, rows = None, []
+    try: rows = inventory()
+    except Exception as e: error = str(e)
+    fixed = [r for r in rows if r["fixed"]]
+    return templates.TemplateResponse(request=request, name="index.html", context={"rows":rows,"fixed_rows":fixed,"fixed_count":len(fixed),"error":error})
 
+
+@app.post("/api/ip")
+def update_ip(payload: IPUpdate):
     try:
-        rows = get_inventory()
-    except Exception as e:
-        error = str(e)
-
-    fixed_ips = load_fixed_ips()
-
-    for row in rows:
-        row["fixed"] = row["ip"] in fixed_ips
-
-    fixed_rows = [row for row in rows if row["fixed"]]
-
-    return templates.TemplateResponse(
-        request=request,
-        name="index.html",
-        context={
-            "rows": rows,
-            "fixed_rows": fixed_rows,
-            "fixed_ips": sorted(
-                fixed_ips,
-                key=lambda value: tuple(int(x) for x in value.split(".")),
-            ),
-            "error": error,
-        },
-    )
+        address = ipaddress.ip_address(payload.ip.strip())
+        if address.version != 4: raise ValueError("Seules les IPv4 sont supportées")
+        with db() as c:
+            c.execute("INSERT INTO ip_metadata(ip,fixed,description,model) VALUES(?,?,?,?) ON CONFLICT(ip) DO UPDATE SET fixed=excluded.fixed,description=excluded.description,model=excluded.model", (str(address), int(payload.fixed), payload.description.strip(), payload.model.strip()))
+            c.commit()
+        return {"success":True,"ip":str(address)}
+    except ValueError as e: return {"success":False,"error":str(e)}
 
 
 @app.post("/api/fixed-ips")
-def update_fixed_ips(payload: FixedIPsPayload):
+def update_fixed_ips(payload: dict):
     try:
-        ips = normalize_ips(payload.ips)
-        write_fixed_ips(ips)
-
-        return {
-            "success": True,
-            "ips": ips,
-            "count": len(ips),
-        }
-
-    except ValueError as e:
-        return {
-            "success": False,
-            "error": str(e),
-        }
+        ips = set()
+        for raw in payload.get("ips", []):
+            if not raw.strip(): continue
+            address = ipaddress.ip_address(raw.strip())
+            if address.version != 4: raise ValueError(f"IPv4 uniquement : {raw}")
+            ips.add(str(address))
+        with db() as c:
+            for ip in ips: c.execute("INSERT INTO ip_metadata(ip,fixed) VALUES(?,1) ON CONFLICT(ip) DO UPDATE SET fixed=1", (ip,))
+            if ips: c.execute("UPDATE ip_metadata SET fixed=0 WHERE ip NOT IN ({})".format(",".join("?"*len(ips))), tuple(ips))
+            else: c.execute("UPDATE ip_metadata SET fixed=0")
+            c.commit()
+        return {"success":True,"ips":sorted(ips,key=lambda x:tuple(map(int,x.split("."))))}
+    except ValueError as e: return {"success":False,"error":str(e)}
