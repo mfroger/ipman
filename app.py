@@ -1,4 +1,3 @@
-import base64
 import ipaddress
 import os
 from typing import Any
@@ -19,12 +18,6 @@ API_KEY = os.getenv("UNIFI_API_KEY")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IPS_FILE = os.path.join(BASE_DIR, "ips.txt")
 
-# GitHub sync configuration.
-GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO = "mfroger/ipman"
-GITHUB_BRANCH = "main"
-GITHUB_FILE = "ips.txt"
-
 app = FastAPI(title="IPMan")
 
 templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
@@ -39,7 +32,6 @@ requests.packages.urllib3.disable_warnings()
 
 class FixedIPsPayload(BaseModel):
     ips: list[str]
-    push_github: bool = True
 
 
 # ============================================================
@@ -139,56 +131,6 @@ def write_fixed_ips(ips: list[str]) -> None:
 
     with open(IPS_FILE, "w", encoding="utf-8") as f:
         f.write(content)
-
-
-def push_ips_to_github(ips: list[str]) -> str:
-    """Commit ips.txt to GitHub using the repository Contents API."""
-    if not GITHUB_TOKEN:
-        raise RuntimeError(
-            "GITHUB_TOKEN n'est pas défini. Les IP ont été sauvegardées localement."
-        )
-
-    api_url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{GITHUB_FILE}"
-
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "X-GitHub-Api-Version": "2022-11-28",
-    }
-
-    response = requests.get(
-        api_url,
-        headers=headers,
-        params={"ref": GITHUB_BRANCH},
-        timeout=15,
-    )
-    response.raise_for_status()
-
-    current = response.json()
-    current_sha = current.get("sha")
-
-    content = "# IP fixes\n# Une IP par ligne\n# Les lignes commençant par # sont ignorées\n\n"
-    content += "\n".join(ips)
-    content += "\n"
-
-    payload = {
-        "message": "Update fixed IPs from IPMan",
-        "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
-        "branch": GITHUB_BRANCH,
-    }
-
-    if current_sha:
-        payload["sha"] = current_sha
-
-    response = requests.put(
-        api_url,
-        headers=headers,
-        json=payload,
-        timeout=15,
-    )
-    response.raise_for_status()
-
-    return response.json().get("commit", {}).get("html_url", "")
 
 
 # ============================================================
@@ -309,7 +251,6 @@ def index(request: Request):
                 fixed_ips,
                 key=lambda value: tuple(int(x) for x in value.split(".")),
             ),
-            "github_configured": bool(GITHUB_TOKEN),
             "error": error,
         },
     )
@@ -321,22 +262,10 @@ def update_fixed_ips(payload: FixedIPsPayload):
         ips = normalize_ips(payload.ips)
         write_fixed_ips(ips)
 
-        github_url = None
-        github_error = None
-
-        if payload.push_github:
-            try:
-                github_url = push_ips_to_github(ips)
-            except Exception as e:
-                github_error = str(e)
-
         return {
             "success": True,
             "ips": ips,
             "count": len(ips),
-            "github_pushed": github_url is not None,
-            "github_url": github_url,
-            "github_error": github_error,
         }
 
     except ValueError as e:
