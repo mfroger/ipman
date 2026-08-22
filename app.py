@@ -30,6 +30,9 @@ class IPUpdate(BaseModel):
     description: str = ""
     model: str = ""
 
+class IPDelete(BaseModel):
+    ip: str
+
 
 def db():
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -137,6 +140,19 @@ def update_ip(payload: IPUpdate):
             c.execute("INSERT INTO ip_metadata(ip,fixed,description,model) VALUES(?,?,?,?) ON CONFLICT(ip) DO UPDATE SET fixed=excluded.fixed,description=excluded.description,model=excluded.model", (str(address), int(payload.fixed), payload.description.strip(), payload.model.strip()))
             c.commit()
         return {"success":True,"ip":str(address)}
+    except ValueError as e: return {"success":False,"error":str(e)}
+
+
+@app.delete("/api/ip")
+def delete_ip(payload: IPDelete):
+    try:
+        address = ipaddress.ip_address(payload.ip.strip())
+        if address.version != 4: raise ValueError("Seules les IPv4 sont supportées")
+        ip = str(address)
+        with db() as c:
+            c.execute("DELETE FROM ip_metadata WHERE ip = ?", (ip,))
+            c.commit()
+        return {"success":True,"ip":ip}
     except ValueError as e: return {"success":False,"error":str(e)}
 
 
