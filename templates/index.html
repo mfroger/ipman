@@ -50,10 +50,6 @@
         </button>
     </nav>
 
-    <!-- =====================================================
-         ALL IPs
-    ====================================================== -->
-
     <section id="all" class="tab-content active">
 
         <div class="toolbar">
@@ -119,10 +115,6 @@
         </div>
     </section>
 
-    <!-- =====================================================
-         FIXED IPs
-    ====================================================== -->
-
     <section id="fixed" class="tab-content">
 
         <div class="fixed-manager">
@@ -131,12 +123,6 @@
                     <h2>IP fixes</h2>
                     <p>Une IP par ligne. Les modifications sont enregistrées dans <code>ips.txt</code>.</p>
                 </div>
-
-                {% if github_configured %}
-                    <span class="github-status configured">GitHub activé</span>
-                {% else %}
-                    <span class="github-status">GitHub non configuré</span>
-                {% endif %}
             </div>
 
             <textarea
@@ -147,12 +133,8 @@
 {% endfor %}</textarea>
 
             <div class="fixed-manager-actions">
-                <button class="button secondary" onclick="saveFixedIPs(false)">
+                <button class="button primary" onclick="saveFixedIPs()">
                     Enregistrer
-                </button>
-
-                <button class="button primary" onclick="saveFixedIPs(true)">
-                    Enregistrer + GitHub
                 </button>
 
                 <span id="saveStatus" class="save-status"></span>
@@ -256,7 +238,7 @@ function filterTable(tableId, value) {
     });
 }
 
-async function saveFixedIPs(pushGithub) {
+async function saveFixedIPs() {
     const textarea = document.getElementById('fixedIpsInput');
     const status = document.getElementById('saveStatus');
 
@@ -285,28 +267,12 @@ async function saveFixedIPs(pushGithub) {
 
         textarea.value = data.ips.join('\n');
 
-        if (pushGithub) {
-            if (data.github_pushed) {
-                status.className = 'save-status success';
-                status.innerHTML = '✓ Enregistré et pushé sur GitHub';
+        status.className = 'save-status success';
+        status.textContent = '✓ ips.txt enregistré localement';
 
-                if (data.github_url) {
-                    status.innerHTML +=
-                        ' — <a href="' + data.github_url + '" target="_blank">commit</a>';
-                }
-            } else if (data.github_error) {
-                status.className = 'save-status warning';
-                status.textContent = '✓ Enregistré localement — GitHub : ' + data.github_error;
-            }
-        } else {
-            status.className = 'save-status success';
-            status.textContent = '✓ ips.txt enregistré';
-        }
-
-        // Refresh the inventory so the IP Fixed tab/table reflects the new file.
         setTimeout(function() {
             window.location.reload();
-        }, 900);
+        }, 700);
 
     } catch (error) {
         status.className = 'save-status error-status';
