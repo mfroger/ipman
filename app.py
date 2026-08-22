@@ -20,11 +20,10 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 IPS_FILE = os.path.join(BASE_DIR, "ips.txt")
 
 # GitHub sync configuration.
-# A fine-grained token with Contents: write is sufficient.
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
-GITHUB_REPO = os.getenv("GITHUB_REPO", "mfroger/ipman")
-GITHUB_BRANCH = os.getenv("GITHUB_BRANCH", "main")
-GITHUB_FILE = os.getenv("GITHUB_FILE", "ips.txt")
+GITHUB_REPO = "mfroger/ipman"
+GITHUB_BRANCH = "main"
+GITHUB_FILE = "ips.txt"
 
 app = FastAPI(title="IPMan")
 
@@ -154,7 +153,7 @@ def push_ips_to_github(ips: list[str]) -> str:
     headers = {
         "Accept": "application/vnd.github+json",
         "Authorization": f"Bearer {GITHUB_TOKEN}",
-        "X-GitHub-Api-Version": "2026-03-10",
+        "X-GitHub-Api-Version": "2022-11-28",
     }
 
     response = requests.get(
