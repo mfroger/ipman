@@ -40,6 +40,7 @@ requests.packages.urllib3.disable_warnings()
 
 class FixedIPsPayload(BaseModel):
     ips: list[str]
+    push_github: bool = True
 
 
 # ============================================================
@@ -156,7 +157,6 @@ def push_ips_to_github(ips: list[str]) -> str:
         "X-GitHub-Api-Version": "2026-03-10",
     }
 
-    # Read the current SHA because GitHub requires it when updating a file.
     response = requests.get(
         api_url,
         headers=headers,
@@ -325,10 +325,11 @@ def update_fixed_ips(payload: FixedIPsPayload):
         github_url = None
         github_error = None
 
-        try:
-            github_url = push_ips_to_github(ips)
-        except Exception as e:
-            github_error = str(e)
+        if payload.push_github:
+            try:
+                github_url = push_ips_to_github(ips)
+            except Exception as e:
+                github_error = str(e)
 
         return {
             "success": True,
