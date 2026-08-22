@@ -1,0 +1,456 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>IPMan</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', path='style.css') }}"
+    >
+</head>
+
+<body>
+
+<div class="container">
+
+    <!-- =====================================================
+         HEADER
+    ====================================================== -->
+
+    <header>
+
+        <div>
+            <h1>IPMan</h1>
+            <p>Inventaire IP UniFi</p>
+        </div>
+
+        <div class="stats">
+
+            <div>
+                <strong>{{ rows|length }}</strong>
+                <span>Toutes les IP</span>
+            </div>
+
+            <div>
+                <strong>{{ fixed_rows|length }}</strong>
+                <span>IP Fixed</span>
+            </div>
+
+        </div>
+
+    </header>
+
+
+    <!-- =====================================================
+         ERROR
+    ====================================================== -->
+
+    {% if error %}
+
+    <div class="error">
+        <strong>Erreur UniFi :</strong>
+        {{ error }}
+    </div>
+
+    {% endif %}
+
+
+    <!-- =====================================================
+         TABS
+    ====================================================== -->
+
+    <nav class="tabs">
+
+        <button
+            class="tab active"
+            onclick="showTab('all', this)"
+        >
+            Toutes les IP
+            <span>{{ rows|length }}</span>
+        </button>
+
+        <button
+            class="tab"
+            onclick="showTab('fixed', this)"
+        >
+            IP Fixed
+            <span>{{ fixed_rows|length }}</span>
+        </button>
+
+    </nav>
+
+
+    <!-- =====================================================
+         TOUTES LES IP
+    ====================================================== -->
+
+    <section
+        id="all"
+        class="tab-content active"
+    >
+
+        <div class="toolbar">
+
+            <input
+                id="searchAll"
+                type="search"
+                placeholder="Rechercher IP, VLAN, nom, MAC..."
+                oninput="filterTable('allTable', this.value)"
+            >
+
+        </div>
+
+
+        <div class="table-wrap">
+
+            <table id="allTable">
+
+                <thead>
+
+                    <tr>
+
+                        <th>IP</th>
+                        <th>VLAN</th>
+                        <th>TYPE</th>
+                        <th>NOM</th>
+                        <th>MAC</th>
+                        <th>MODÈLE</th>
+                        <th>ÉTAT</th>
+                        <th>SITE</th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                {% for row in rows %}
+
+                    <tr
+                        class="{% if row.fixed %}fixed-row{% endif %}"
+                    >
+
+                        <!-- IP -->
+
+                        <td class="ip">
+                            {{ row.ip }}
+                        </td>
+
+
+                        <!-- VLAN -->
+
+                        <td>
+
+                            {% if row.vlan is not none %}
+
+                                <span
+                                    class="vlan vlan-{{ row.vlan }}"
+                                >
+                                    VLAN {{ row.vlan }}
+                                </span>
+
+                            {% else %}
+
+                                —
+
+                            {% endif %}
+
+                        </td>
+
+
+                        <!-- TYPE -->
+
+                        <td>
+
+                            <span
+                                class="badge {{ row.type|lower }}"
+                            >
+                                {{ row.type }}
+                            </span>
+
+                        </td>
+
+
+                        <!-- NOM -->
+
+                        <td>
+                            {{ row.name }}
+                        </td>
+
+
+                        <!-- MAC -->
+
+                        <td class="mono">
+                            {{ row.mac }}
+                        </td>
+
+
+                        <!-- MODELE -->
+
+                        <td>
+                            {{ row.model }}
+                        </td>
+
+
+                        <!-- ETAT -->
+
+                        <td>
+
+                            <span
+                                class="state {{ row.state|lower }}"
+                            >
+                                {{ row.state }}
+                            </span>
+
+                        </td>
+
+
+                        <!-- SITE -->
+
+                        <td>
+                            {{ row.site }}
+                        </td>
+
+                    </tr>
+
+                {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         IP FIXED
+    ====================================================== -->
+
+    <section
+        id="fixed"
+        class="tab-content"
+    >
+
+        <div class="toolbar">
+
+            <input
+                id="searchFixed"
+                type="search"
+                placeholder="Rechercher IP, VLAN, nom, MAC..."
+                oninput="filterTable('fixedTable', this.value)"
+            >
+
+        </div>
+
+
+        <div class="table-wrap">
+
+            <table id="fixedTable">
+
+                <thead>
+
+                    <tr>
+
+                        <th>IP</th>
+                        <th>VLAN</th>
+                        <th>TYPE</th>
+                        <th>NOM</th>
+                        <th>MAC</th>
+                        <th>MODÈLE</th>
+                        <th>ÉTAT</th>
+                        <th>SITE</th>
+
+                    </tr>
+
+                </thead>
+
+
+                <tbody>
+
+                {% for row in fixed_rows %}
+
+                    <tr>
+
+                        <!-- IP -->
+
+                        <td class="ip">
+                            {{ row.ip }}
+                        </td>
+
+
+                        <!-- VLAN -->
+
+                        <td>
+
+                            {% if row.vlan is not none %}
+
+                                <span
+                                    class="vlan vlan-{{ row.vlan }}"
+                                >
+                                    VLAN {{ row.vlan }}
+                                </span>
+
+                            {% else %}
+
+                                —
+
+                            {% endif %}
+
+                        </td>
+
+
+                        <!-- TYPE -->
+
+                        <td>
+
+                            <span
+                                class="badge {{ row.type|lower }}"
+                            >
+                                {{ row.type }}
+                            </span>
+
+                        </td>
+
+
+                        <!-- NOM -->
+
+                        <td>
+                            {{ row.name }}
+                        </td>
+
+
+                        <!-- MAC -->
+
+                        <td class="mono">
+                            {{ row.mac }}
+                        </td>
+
+
+                        <!-- MODELE -->
+
+                        <td>
+                            {{ row.model }}
+                        </td>
+
+
+                        <!-- ETAT -->
+
+                        <td>
+
+                            <span
+                                class="state {{ row.state|lower }}"
+                            >
+                                {{ row.state }}
+                            </span>
+
+                        </td>
+
+
+                        <!-- SITE -->
+
+                        <td>
+                            {{ row.site }}
+                        </td>
+
+                    </tr>
+
+                {% endfor %}
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+    </section>
+
+
+    <!-- =====================================================
+         FOOTER
+    ====================================================== -->
+
+    <footer>
+
+        <span>
+            Fixed IPs chargées depuis
+            <code>ips.txt</code>
+        </span>
+
+        <span>
+            {{ fixed_ips|length }} IP configurées
+        </span>
+
+    </footer>
+
+</div>
+
+
+<!-- =======================================================
+     JAVASCRIPT
+======================================================== -->
+
+<script>
+
+function showTab(id, button) {
+
+    document
+        .querySelectorAll(".tab-content")
+        .forEach(function(element) {
+
+            element.classList.remove("active");
+
+        });
+
+
+    document
+        .querySelectorAll(".tab")
+        .forEach(function(element) {
+
+            element.classList.remove("active");
+
+        });
+
+
+    document
+        .getElementById(id)
+        .classList.add("active");
+
+
+    button.classList.add("active");
+
+}
+
+
+function filterTable(tableId, value) {
+
+    value = value
+        .toLowerCase()
+        .trim();
+
+
+    document
+        .querySelectorAll(
+            "#" + tableId + " tbody tr"
+        )
+        .forEach(function(row) {
+
+            row.style.display =
+                row.innerText
+                    .toLowerCase()
+                    .includes(value)
+                    ? ""
+                    : "none";
+
+        });
+
+}
+
+</script>
+
+</body>
+</html>
