@@ -31,6 +31,7 @@ class IPUpdate(BaseModel):
     fixed: bool = False
     description: str = ""
     model: str = ""
+    type: str = ""
 
 
 class IPDelete(BaseModel):
@@ -69,11 +70,14 @@ def init_db():
             fixed INTEGER NOT NULL DEFAULT 0,
             description TEXT NOT NULL DEFAULT '',
             model TEXT NOT NULL DEFAULT '',
-            mac TEXT NOT NULL DEFAULT ''
+            mac TEXT NOT NULL DEFAULT '',
+            type TEXT NOT NULL DEFAULT ''
         )""")
         columns = {r[1] for r in c.execute("PRAGMA table_info(ip_metadata)")}
         if "mac" not in columns:
             c.execute("ALTER TABLE ip_metadata ADD COLUMN mac TEXT NOT NULL DEFAULT ''")
+        if "type" not in columns:
+            c.execute("ALTER TABLE ip_metadata ADD COLUMN type TEXT NOT NULL DEFAULT ''")
 
         c.execute("""CREATE TABLE IF NOT EXISTS inventory_cache (
             id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -99,6 +103,7 @@ def metadata():
             "description": r["description"],
             "model_override": r["model"],
             "mac": (r["mac"] or "").lower(),
+            "type_override": (r["type"] or "").upper(),
         }
         by_ip[item["ip"]] = item
         if item["mac"]:
@@ -166,8 +171,7 @@ def apply_metadata(rows):
             row["fixed"] = m["fixed"]
             row["description"] = m["description"]
             row["model"] = m["model_override"] or row.get("model", "")
-            # The MAC is the stable identity. If UniFi changed the IP,
-            # move the metadata record to the new IP automatically.
+            row["type"] = m["type_override"] or row.get("type", "")
             if mac and m["mac"] == mac and m["ip"] != ip:
                 with db() as c:
                     existing = c.execute("SELECT ip FROM ip_metadata WHERE ip=?", (ip,)).fetchone()
@@ -181,14 +185,13 @@ def apply_metadata(rows):
         seen_ips.add(ip)
         result.append(row)
 
-    # IPs created manually in IPMan and not currently visible in UniFi.
     by_ip, _ = metadata()
     for ip, m in by_ip.items():
         if ip in seen_ips:
             continue
         result.append({
             "ip": ip,
-            "type": "IPMAN",
+            "type": m["type_override"] or "IPMAN",
             "name": "",
             "mac": m["mac"],
             "model": m["model_override"],
@@ -264,9 +267,7 @@ def cached_inventory():
 
 def sync_inventory():
     rows = fetch_inventory_from_unifi()
-    # Match existing metadata by MAC and move IPs when UniFi reports a new one.
     apply_metadata(rows)
-    # Reload metadata after any MAC-based IP moves, then cache the raw UniFi data.
     save_cache(rows)
     return apply_metadata(rows)
 
@@ -317,12 +318,16 @@ def update_ip(payload: IPUpdate):
         if address.version != 4:
             raise ValueError("Seules les IPv4 sont supportées")
         ip = str(address)
+        allowed_types = {"UNIFI", "CLIENT", "IPMAN"}
+        ip_type = payload.type.strip().upper() or "IPMAN"
+        if ip_type not in allowed_types:
+            raise ValueError("Type invalide")
         with db() as c:
             old = c.execute("SELECT mac FROM ip_metadata WHERE ip=?", (ip,)).fetchone()
             mac = old["mac"] if old else ""
             c.execute(
-                "INSERT INTO ip_metadata(ip,fixed,description,model,mac) VALUES(?,?,?,?,?) ON CONFLICT(ip) DO UPDATE SET fixed=excluded.fixed,description=excluded.description,model=excluded.model",
-                (ip, int(payload.fixed), payload.description.strip(), payload.model.strip(), mac),
+                "INSERT INTO ip_metadata(ip,fixed,description,model,mac,type) VALUES(?,?,?,?,?,?) ON CONFLICT(ip) DO UPDATE SET fixed=excluded.fixed,description=excluded.description,model=excluded.model,type=excluded.type",
+                (ip, int(payload.fixed), payload.description.strip(), payload.model.strip(), mac, ip_type),
             )
             c.commit()
         return {"success": True, "ip": ip}
