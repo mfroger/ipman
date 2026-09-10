@@ -22,11 +22,10 @@ DATA_DIR = os.path.join(BASE_DIR, "data")
 LEGACY_DB_FILE = os.path.join(DATA_DIR, "ipman.db")
 IPS_FILE = os.path.join(BASE_DIR, "ips.txt")
 
-# PostgreSQL configuration.
-# The password is intentionally read from the environment and is not committed to GitHub.
+# PostgreSQL configuration. Secrets must come from the environment.
 POSTGRES_DB = os.getenv("POSTGRES_DB", "ipam")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "mickael")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "aurelien")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "database.mickyhome.casa")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 
@@ -134,10 +133,8 @@ def init_db():
     os.makedirs(DATA_DIR, exist_ok=True)
     pg_db.connect(reuse_if_open=True)
     pg_db.create_tables([IPMetadata, InventoryCache], safe=True)
-
     migrate_legacy_sqlite()
 
-    # Keep support for the original ips.txt on a fresh installation.
     if not IPMetadata.select().exists():
         with pg_db.atomic():
             for ip in load_old_ips():
@@ -215,32 +212,28 @@ def apply_metadata(rows):
         if not ip:
             continue
 
-        # MAC is the primary key for matching a UniFi device to our metadata.
-        # This means changing its IP in UniFi will keep its description/model/fixed state.
         m = by_mac.get(mac) if mac else None
         if m is None:
             m = by_ip.get(ip)
 
         if m:
-            row["fixed"] = m["fixed"]
+            # A UniFi reservation and an IPMan manual fixed flag are both fixed.
+            row["fixed"] = bool(m["fixed"] or row.get("unifi_fixed", False))
             row["description"] = m["description"]
             row["model"] = m["model_override"] or row.get("model", "")
             row["type"] = m["type_override"] or row.get("type", "")
 
             with pg_db.connection_context():
                 if mac and m["mac"] != mac:
-                    (
-                        IPMetadata.update(mac=mac)
-                        .where((IPMetadata.ip == m["ip"]) & ((IPMetadata.mac == "") | IPMetadata.mac.is_null()))
-                        .execute()
-                    )
+                    IPMetadata.update(mac=mac).where(
+                        (IPMetadata.ip == m["ip"]) & ((IPMetadata.mac == "") | IPMetadata.mac.is_null())
+                    ).execute()
 
                 if mac and m["mac"] == mac and m["ip"] != ip:
                     if IPMetadata.get_or_none(IPMetadata.ip == ip) is None:
                         IPMetadata.update(ip=ip).where(IPMetadata.ip == m["ip"]).execute()
-
         else:
-            row["fixed"] = False
+            row["fixed"] = bool(row.get("unifi_fixed", False))
             row["description"] = ""
 
         row.setdefault("vlan", vlan(ip))
@@ -309,12 +302,28 @@ def fetch_inventory_from_unifi():
                     "vlan_name": network_names.get(v, ""),
                     "id": d.get("id", ""),
                     "uplink_id": d.get("uplinkDeviceId", ""),
+                    "unifi_fixed": False,
                 }
             )
 
         for client in clients:
-            ip = client.get("ipAddress")
-            if not ip or client.get("macAddress", "").lower() in device_macs:
+            # Depending on UniFi Network version, these fields may be exposed as
+            # fixedIp/fixed_ip and useFixedIp/use_fixedip. The official Integration
+            # API documentation does not currently guarantee them, so we support all
+            # observed variants without relying on the private API.
+            fixed_ip = (
+                client.get("fixedIp")
+                or client.get("fixed_ip")
+                or client.get("fixedIP")
+            )
+            use_fixed = bool(
+                client.get("useFixedIp")
+                or client.get("use_fixedip")
+                or client.get("useFixedIP")
+            )
+            ip = fixed_ip if use_fixed and fixed_ip else client.get("ipAddress")
+            mac = client.get("macAddress", "")
+            if not ip or mac.lower() in device_macs:
                 continue
             v = vlan(ip)
             result.append(
@@ -322,7 +331,7 @@ def fetch_inventory_from_unifi():
                     "ip": ip,
                     "type": "CLIENT",
                     "name": client.get("name", ""),
-                    "mac": client.get("macAddress", ""),
+                    "mac": mac,
                     "model": "",
                     "state": "ONLINE",
                     "site": sname,
@@ -330,6 +339,7 @@ def fetch_inventory_from_unifi():
                     "vlan_name": network_names.get(v, ""),
                     "id": client.get("id", ""),
                     "uplink_id": client.get("uplinkDeviceId", ""),
+                    "unifi_fixed": use_fixed and bool(fixed_ip),
                 }
             )
     return result
