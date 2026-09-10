@@ -26,7 +26,7 @@ IPS_FILE = os.path.join(BASE_DIR, "ips.txt")
 # The password is intentionally read from the environment and is not committed to GitHub.
 POSTGRES_DB = os.getenv("POSTGRES_DB", "ipam")
 POSTGRES_USER = os.getenv("POSTGRES_USER", "mickael")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "aurelien")
 POSTGRES_HOST = os.getenv("POSTGRES_HOST", "database.mickyhome.casa")
 POSTGRES_PORT = int(os.getenv("POSTGRES_PORT", "5432"))
 
