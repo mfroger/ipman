@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 load_dotenv()
 
-UNIFI_URL = os.getenv("UNIFI_URL", "https://192.168.1.1").rstrip("/")
+UNIFI_URL = os.getenv("UNIFI_URL", "https://10.44.1.1").rstrip("/")
 API_KEY = os.getenv("UNIFI_API_KEY")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
