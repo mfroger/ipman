@@ -208,6 +208,8 @@ def apply_metadata(rows):
     by_ip, by_mac = metadata()
     seen_ips = set()
     result = []
+    ip_updates = []
+
     for original in rows:
         row = dict(original)
         ip = row.get("ip")
@@ -227,15 +229,11 @@ def apply_metadata(rows):
             row["model"] = m["model_override"] or row.get("model", "")
             row["type"] = m["type_override"] or row.get("type", "")
 
-            with pg_db.connection_context():
-                if mac and m["mac"] != mac:
-                    IPMetadata.update(mac=mac).where(
-                        (IPMetadata.ip == m["ip"]) & ((IPMetadata.mac == "") | IPMetadata.mac.is_null())
-                    ).execute()
+            if mac and m["mac"] != mac:
+                ip_updates.append(("mac", m["ip"], mac))
 
-                if mac and m["mac"] == mac and m["ip"] != ip:
-                    if IPMetadata.get_or_none(IPMetadata.ip == ip) is None:
-                        IPMetadata.update(ip=ip).where(IPMetadata.ip == m["ip"]).execute()
+            if mac and m["mac"] == mac and m["ip"] != ip and ip not in by_ip:
+                ip_updates.append(("ip", m["ip"], ip))
         else:
             row["unifi_fixed"] = bool(row.get("unifi_fixed", False))
             row["fixed"] = bool(row.get("fixed", False) or row["unifi_fixed"])
@@ -250,7 +248,21 @@ def apply_metadata(rows):
         seen_ips.add(ip)
         result.append(row)
 
-    by_ip, _ = metadata()
+    # Persist metadata corrections in one DB connection instead of opening
+    # a connection and issuing queries for every inventory row.
+    if ip_updates:
+        with pg_db.connection_context():
+            for kind, old_ip, value in ip_updates:
+                if kind == "mac":
+                    IPMetadata.update(mac=value).where(
+                        (IPMetadata.ip == old_ip)
+                        & ((IPMetadata.mac == "") | IPMetadata.mac.is_null())
+                    ).execute()
+                elif kind == "ip":
+                    if IPMetadata.get_or_none(IPMetadata.ip == value) is None:
+                        IPMetadata.update(ip=value).where(IPMetadata.ip == old_ip).execute()
+
+    # by_ip already contains all metadata, so don't query PostgreSQL a second time.
     for ip, m in by_ip.items():
         if ip in seen_ips:
             continue
