@@ -197,7 +197,7 @@ def get_all(endpoint):
 def vlan(ip):
     try:
         p = ip.split(".")
-        return int(p[2]) if len(p) == 4 and p[:2] == ["192", "168"] else None
+        return int(p[2]) if len(p) == 4 and p[:2] in (["10", "44"], ["192", "168"]) else None
     except ValueError:
         return None
 
@@ -484,7 +484,7 @@ def update_ip(payload: IPUpdate):
 def update_ip_types(payload: IPTypeBulkUpdate):
     try:
         ip_type = payload.type.strip().upper()
-        if ip_type not in {"UNIFI", "CLIENT", "IPMAN", "HOMELAB", "PROXMOX"}:
+        if ip_type not in {"UNIFI", "CLIENT", "IPMAN", "HOMELAB", "DOMOTIQUE", "PROXMOX"}:
             raise ValueError("Type invalide")
 
         ips = set()
