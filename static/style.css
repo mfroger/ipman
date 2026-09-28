@@ -480,13 +480,18 @@ tr:hover td {
 }
 
 .badge.type-homelab {
-    background: #4ba9c8;
-    color: #222;
+    background: #6c35da;
+    color: #ffffff;
+}
+
+.badge.type-domotique {
+    background: #c9c316;
+    color: #1b1919;
 }
 
 .badge.type-proxmox {
     background: #cb820e;
-    color: #222;
+    color: #ffffff;
 }
 
 .badge.type-client {
