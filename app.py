@@ -196,7 +196,7 @@ def legacy_api_get(path, params=None):
 def sync_unifi_fixed_reservations(site_id):
     """Import UniFi DHCP reservations into IPMan without overwriting metadata."""
     try:
-        data = legacy_api_get(f"/s/{site_id}/rest/user")
+        data = legacy_api_get("/s/default/rest/user")
     except Exception as e:
         print(f"UniFi fixed reservations unavailable for site {site_id}: {e}")
         return 0
