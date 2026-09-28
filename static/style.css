@@ -223,6 +223,54 @@ header p {
     color: var(--button-text)
 }
 
+.bulk-actions {
+    display: none;
+    align-items: center;
+    gap: 10px;
+    margin: -2px 0 12px;
+    padding: 10px 14px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px
+}
+
+.bulk-actions.open {
+    display: flex
+}
+
+.bulk-actions strong {
+    font-size: 13px
+}
+
+.bulk-actions span {
+    color: var(--muted);
+    font-size: 12px
+}
+
+.bulk-actions select {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    background: var(--input);
+    color: var(--text);
+    font-size: 13px
+}
+
+.select-column {
+    width: 42px;
+    text-align: center;
+    padding-left: 10px !important;
+    padding-right: 6px !important
+}
+
+.select-column input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: #64BE04;
+    cursor: pointer
+}
+
 .filters-panel {
     display: none;
     margin: -2px 0 12px;
