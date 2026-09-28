@@ -44,6 +44,7 @@ pg_db = PostgresqlDatabase(
 class IPMetadata(Model):
     ip = CharField(primary_key=True, max_length=45)
     fixed = BooleanField(default=False)
+    unifi_fixed = BooleanField(default=False)
     description = TextField(default="")
     model = TextField(default="")
     mac = CharField(max_length=32, default="")
@@ -133,6 +134,7 @@ def init_db():
     os.makedirs(DATA_DIR, exist_ok=True)
     pg_db.connect(reuse_if_open=True)
     pg_db.create_tables([IPMetadata, InventoryCache], safe=True)
+    pg_db.execute_sql("ALTER TABLE ip_metadata ADD COLUMN IF NOT EXISTS unifi_fixed BOOLEAN NOT NULL DEFAULT FALSE")
     migrate_legacy_sqlite()
 
     if not IPMetadata.select().exists():
@@ -150,6 +152,7 @@ def metadata():
         item = {
             "ip": r.ip,
             "fixed": bool(r.fixed),
+            "unifi_fixed": bool(r.unifi_fixed),
             "description": r.description or "",
             "model_override": r.model or "",
             "mac": (r.mac or "").lower(),
@@ -173,6 +176,61 @@ def api_get(path, params=None):
     )
     r.raise_for_status()
     return r.json()
+
+
+def legacy_api_get(path, params=None):
+    """Call UniFi legacy Network API with the Integration API key."""
+    if not API_KEY:
+        raise RuntimeError("UNIFI_API_KEY n'est pas défini")
+    r = requests.get(
+        f"{UNIFI_URL}/proxy/network/api{path}",
+        headers={"X-API-Key": API_KEY, "Accept": "application/json"},
+        params=params,
+        verify=False,
+        timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def sync_unifi_fixed_reservations(site_id):
+    """Import UniFi DHCP reservations into IPMan without overwriting metadata."""
+    try:
+        data = legacy_api_get(f"/s/{site_id}/rest/user")
+    except Exception as e:
+        print(f"UniFi fixed reservations unavailable for site {site_id}: {e}")
+        return 0
+
+    inserted = 0
+    with pg_db.atomic():
+        for client in data.get("data", []):
+            if not client.get("use_fixedip") or not client.get("fixed_ip"):
+                continue
+            try:
+                address = ipaddress.ip_address(str(client["fixed_ip"]).strip())
+                if address.version != 4:
+                    continue
+            except ValueError:
+                continue
+
+            ip = str(address)
+            mac = (client.get("mac") or "").strip().lower()
+            if not mac:
+                continue
+
+            existing = IPMetadata.get_or_none(IPMetadata.ip == ip)
+            if existing:
+                existing.unifi_fixed = True
+                if not existing.mac:
+                    existing.mac = mac
+                existing.save(only=["unifi_fixed", "mac"])
+            else:
+                IPMetadata.create(
+                    ip=ip, fixed=True, unifi_fixed=True, description="",
+                    model="", mac=mac, type="CLIENT",
+                )
+                inserted += 1
+    return inserted
 
 
 def get_all(endpoint):
@@ -218,7 +276,8 @@ def apply_metadata(rows):
 
         if m:
             # A UniFi reservation and an IPMan manual fixed flag are both fixed.
-            row["fixed"] = bool(m["fixed"] or row.get("unifi_fixed", False))
+            row["unifi_fixed"] = bool(m["unifi_fixed"] or row.get("unifi_fixed", False))
+            row["fixed"] = bool(m["fixed"] or row["unifi_fixed"])
             row["description"] = m["description"]
             row["model"] = m["model_override"] or row.get("model", "")
             row["type"] = m["type_override"] or row.get("type", "")
@@ -233,7 +292,8 @@ def apply_metadata(rows):
                     if IPMetadata.get_or_none(IPMetadata.ip == ip) is None:
                         IPMetadata.update(ip=ip).where(IPMetadata.ip == m["ip"]).execute()
         else:
-            row["fixed"] = bool(row.get("unifi_fixed", False))
+            row["unifi_fixed"] = bool(row.get("unifi_fixed", False))
+            row["fixed"] = bool(row.get("fixed", False) or row["unifi_fixed"])
             row["description"] = ""
 
         row.setdefault("vlan", vlan(ip))
@@ -260,7 +320,8 @@ def apply_metadata(rows):
                 "site": "",
                 "vlan": vlan(ip),
                 "vlan_name": "",
-                "fixed": m["fixed"],
+                "fixed": bool(m["fixed"] or m["unifi_fixed"]),
+                "unifi_fixed": m["unifi_fixed"],
                 "description": m["description"],
                 "id": "",
                 "uplink_id": "",
@@ -280,6 +341,8 @@ def fetch_inventory_from_unifi():
             networks = get_all(f"/v1/sites/{sid}/networks")
         except Exception:
             networks = []
+
+        sync_unifi_fixed_reservations(sid)
 
         network_names = {n.get("vlanId"): n.get("name", "") for n in networks if n.get("vlanId") is not None}
         device_macs = {d.get("macAddress", "").lower() for d in devices}
@@ -425,7 +488,7 @@ def update_ip(payload: IPUpdate):
             raise ValueError("Seules les IPv4 sont supportées")
         ip = str(address)
         ip_type = payload.type.strip().upper() or "IPMAN"
-        if ip_type not in {"UNIFI", "CLIENT", "IPMAN"}:
+        if ip_type not in {"UNIFI", "CLIENT", "IPMAN", "HOMELAB", "PROXMOX"}:
             raise ValueError("Type invalide")
 
         with pg_db.connection_context():
