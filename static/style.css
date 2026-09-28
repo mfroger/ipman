@@ -432,17 +432,17 @@ tr:hover td {
 }
 
 .badge.type-homelab {
-    background: #e8e8e8;
+    background: #4ba9c8;
     color: #222;
 }
 
 .badge.type-proxmox {
-    background: #e8e8e8;
+    background: #cb820e;
     color: #222;
 }
 
 .badge.type-client {
-    background: #f59e0b;
+    background: #e8e8e8;
     color: #000
 }
 
