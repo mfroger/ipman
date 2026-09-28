@@ -222,18 +222,18 @@ def apply_metadata(rows):
             m = by_ip.get(ip)
 
         if m:
-            # A UniFi reservation and an IPMan manual fixed flag are both fixed.
             row["unifi_fixed"] = bool(m["unifi_fixed"] or row.get("unifi_fixed", False))
             row["fixed"] = bool(m["fixed"] or row["unifi_fixed"])
             row["description"] = m["description"]
             row["model"] = m["model_override"] or row.get("model", "")
             row["type"] = m["type_override"] or row.get("type", "")
 
-            if mac and m["mac"] != mac:
-                ip_updates.append(("mac", m["ip"], mac))
-
-            if mac and m["mac"] == mac and m["ip"] != ip and ip not in by_ip:
-                ip_updates.append(("ip", m["ip"], ip))
+            # Keep metadata linked to the MAC/IP without opening a DB connection
+            # for every inventory row.
+            if mac and not m["mac"]:
+                ip_updates.append(("mac", mac, m["ip"]))
+            elif mac and m["mac"] == mac and m["ip"] != ip:
+                ip_updates.append(("move", ip, m["ip"]))
         else:
             row["unifi_fixed"] = bool(row.get("unifi_fixed", False))
             row["fixed"] = bool(row.get("fixed", False) or row["unifi_fixed"])
@@ -248,21 +248,22 @@ def apply_metadata(rows):
         seen_ips.add(ip)
         result.append(row)
 
-    # Persist metadata corrections in one DB connection instead of opening
-    # a connection and issuing queries for every inventory row.
+    # Apply all metadata corrections in one DB connection/transaction.
     if ip_updates:
-        with pg_db.connection_context():
-            for kind, old_ip, value in ip_updates:
+        with pg_db.atomic():
+            for kind, value, old_ip in ip_updates:
                 if kind == "mac":
                     IPMetadata.update(mac=value).where(
                         (IPMetadata.ip == old_ip)
                         & ((IPMetadata.mac == "") | IPMetadata.mac.is_null())
                     ).execute()
-                elif kind == "ip":
-                    if IPMetadata.get_or_none(IPMetadata.ip == value) is None:
-                        IPMetadata.update(ip=value).where(IPMetadata.ip == old_ip).execute()
+                elif kind == "move" and IPMetadata.get_or_none(IPMetadata.ip == value) is None:
+                    IPMetadata.update(ip=value).where(IPMetadata.ip == old_ip).execute()
 
-    # by_ip already contains all metadata, so don't query PostgreSQL a second time.
+        # Refresh only once if the DB was modified, so offline/manual rows below
+        # use the latest metadata without issuing a query per row.
+        by_ip, by_mac = metadata()
+
     for ip, m in by_ip.items():
         if ip in seen_ips:
             continue
