@@ -449,7 +449,7 @@ def update_ip(payload: IPUpdate):
             raise ValueError("Seules les IPv4 sont supportées")
         ip = str(address)
         ip_type = payload.type.strip().upper() or "IPMAN"
-        if ip_type not in {"UNIFI", "CLIENT", "IPMAN", "HOMELAB", "PROXMOX"}:
+        if ip_type not in {"UNIFI", "CLIENT", "IPMAN", "HOMELAB", "PROXMOX", "DOMOTIQUE"}:
             raise ValueError("Type invalide")
 
         with pg_db.connection_context():
