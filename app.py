@@ -178,61 +178,6 @@ def api_get(path, params=None):
     return r.json()
 
 
-def legacy_api_get(path, params=None):
-    """Call UniFi legacy Network API with the Integration API key."""
-    if not API_KEY:
-        raise RuntimeError("UNIFI_API_KEY n'est pas défini")
-    r = requests.get(
-        f"{UNIFI_URL}/proxy/network/api{path}",
-        headers={"X-API-Key": API_KEY, "Accept": "application/json"},
-        params=params,
-        verify=False,
-        timeout=15,
-    )
-    r.raise_for_status()
-    return r.json()
-
-
-def sync_unifi_fixed_reservations(site_id):
-    """Import UniFi DHCP reservations into IPMan without overwriting metadata."""
-    try:
-        data = legacy_api_get("/s/default/rest/user")
-    except Exception as e:
-        print(f"UniFi fixed reservations unavailable for site {site_id}: {e}")
-        return 0
-
-    inserted = 0
-    with pg_db.atomic():
-        for client in data.get("data", []):
-            if not client.get("use_fixedip") or not client.get("fixed_ip"):
-                continue
-            try:
-                address = ipaddress.ip_address(str(client["fixed_ip"]).strip())
-                if address.version != 4:
-                    continue
-            except ValueError:
-                continue
-
-            ip = str(address)
-            mac = (client.get("mac") or "").strip().lower()
-            if not mac:
-                continue
-
-            existing = IPMetadata.get_or_none(IPMetadata.ip == ip)
-            if existing:
-                existing.unifi_fixed = True
-                if not existing.mac:
-                    existing.mac = mac
-                existing.save(only=["unifi_fixed", "mac"])
-            else:
-                IPMetadata.create(
-                    ip=ip, fixed=True, unifi_fixed=True, description="",
-                    model="", mac=mac, type="CLIENT",
-                )
-                inserted += 1
-    return inserted
-
-
 def get_all(endpoint):
     result, offset, limit = [], 0, 200
     while True:
@@ -341,8 +286,6 @@ def fetch_inventory_from_unifi():
             networks = get_all(f"/v1/sites/{sid}/networks")
         except Exception:
             networks = []
-
-        sync_unifi_fixed_reservations(sid)
 
         network_names = {n.get("vlanId"): n.get("name", "") for n in networks if n.get("vlanId") is not None}
         device_macs = {d.get("macAddress", "").lower() for d in devices}
