@@ -23,6 +23,6 @@ echo "➡️ Commit message: \"$COMMIT_MSG\""
 
 git add .
 git commit -m "$COMMIT_MSG"
-git push -u origin dev
+git push -u origin main
 
 echo "✅ Pushed!"
