@@ -83,6 +83,11 @@ class IPDelete(BaseModel):
     ip: str
 
 
+class IPTypeBulkUpdate(BaseModel):
+    ips: list[str]
+    type: str
+
+
 def load_old_ips():
     if not os.path.exists(IPS_FILE):
         return []
@@ -471,6 +476,39 @@ def update_ip(payload: IPUpdate):
                 .execute()
             )
         return {"success": True, "ip": ip}
+    except ValueError as e:
+        return {"success": False, "error": str(e)}
+
+
+@app.post("/api/ip/type")
+def update_ip_types(payload: IPTypeBulkUpdate):
+    try:
+        ip_type = payload.type.strip().upper()
+        if ip_type not in {"UNIFI", "CLIENT", "IPMAN", "HOMELAB", "PROXMOX"}:
+            raise ValueError("Type invalide")
+
+        ips = set()
+        for raw in payload.ips:
+            address = ipaddress.ip_address(raw.strip())
+            if address.version != 4:
+                raise ValueError(f"IPv4 uniquement : {raw}")
+            ips.add(str(address))
+
+        with pg_db.atomic():
+            for ip in ips:
+                IPMetadata.insert(
+                    ip=ip,
+                    fixed=False,
+                    description="",
+                    model="",
+                    mac="",
+                    type=ip_type,
+                ).on_conflict(
+                    conflict_target=[IPMetadata.ip],
+                    update={IPMetadata.type: ip_type},
+                ).execute()
+
+        return {"success": True, "count": len(ips), "type": ip_type}
     except ValueError as e:
         return {"success": False, "error": str(e)}
 
