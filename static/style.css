@@ -456,6 +456,18 @@ tr:hover td {
     font-weight: 600
 }
 
+.online-filter-badge {
+    display: inline-block;
+    padding: 5px 10px;
+    border-radius: 7px;
+    background: #22a35a;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .01em
+}
+
+
 .state.online {
     color: #1b9b55
 }
