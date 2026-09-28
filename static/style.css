@@ -509,17 +509,44 @@ tr:hover td {
     font-weight: 600
 }
 
+.state-summary {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    min-height: 32px
+}
+
+.state-summary .checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    margin: 0;
+    cursor: pointer
+}
+
+.state-summary .checkbox input {
+    width: 16px;
+    height: 16px;
+    margin: 0;
+    accent-color: #64BE04
+}
+
 .online-filter-count,
 .offline-filter-count {
     color: var(--muted);
     font-size: 12px;
     font-weight: 700;
-    margin-left: -4px
+    margin-left: 0
+}
+
+.offline-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px
 }
 
 .offline-filter-badge {
     display: inline-block;
-    margin-left: 12px;
     padding: 5px 10px;
     border-radius: 7px;
     background: #e5e7eb;
@@ -923,7 +950,18 @@ tr:hover td {
     height: 16px
 }
 
-.modal-footer {
+.modal-.filter-block:last-child {
+    min-width: 360px
+}
+
+@media(max-width:900px) {
+    .state-summary {
+        flex-wrap: wrap;
+        gap: 10px 16px
+    }
+}
+
+footer {
     display: flex;
     align-items: center;
     justify-content: space-between;
